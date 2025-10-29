@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import PostCard from "./PostCard";
 import { Button } from "./ui/button";
 import { Upload, Send, X, Loader } from "lucide-react";
@@ -22,13 +22,8 @@ export default function Wall() {
   const [loading, setLoading] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    fetchPosts();
-    const interval = setInterval(fetchPosts, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchPosts = async () => {
+  // ✅ useCallback to memoize functions that don't need to re-render often
+  const fetchPosts = useCallback(async () => {
     try {
       const res = await fetch("/api/posts");
       const data = await res.json();
@@ -38,81 +33,106 @@ export default function Wall() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []); // no dependencies → stable reference
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    const validTypes = [
-      "image/jpeg",
-      "image/jpg",
-      "image/png",
-      "image/gif",
-      "image/svg+xml",
-      "image/heic",
-    ];
+  useEffect(() => {
+    fetchPosts();
+    const interval = setInterval(fetchPosts, 5000);
+    return () => clearInterval(interval);
+  }, [fetchPosts]);
 
-    const validFiles = files.filter((file) => {
-      if (!validTypes.includes(file.type)) {
-        alert(`❌ Invalid file type: ${file.name}`);
-        return false;
-      }
-      if (file.size > 100 * 1024 * 1024) {
-        alert(`⚠️ File too large: ${file.name}. Max 100MB.`);
-        return false;
-      }
-      return true;
-    });
+  const handleImageChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files || []);
+      const validTypes = [
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "image/gif",
+        "image/svg+xml",
+        "image/heic",
+      ];
 
-    setImages((prev) => [...prev, ...validFiles]);
+      const validFiles = files.filter((file) => {
+        if (!validTypes.includes(file.type)) {
+          alert(`❌ Invalid file type: ${file.name}`);
+          return false;
+        }
+        if (file.size > 100 * 1024 * 1024) {
+          alert(`⚠️ File too large: ${file.name}. Max 100MB.`);
+          return false;
+        }
+        return true;
+      });
 
-    validFiles.forEach((file) => {
-      const reader = new FileReader();
-      reader.onloadend = () =>
-        setPreviews((prev) => [...prev, reader.result as string]);
-      reader.readAsDataURL(file);
-    });
-  };
+      setImages((prev) => [...prev, ...validFiles]);
 
-  const removeImage = (index: number) => {
+      validFiles.forEach((file) => {
+        const reader = new FileReader();
+        reader.onloadend = () =>
+          setPreviews((prev) => [...prev, reader.result as string]);
+        reader.readAsDataURL(file);
+      });
+    },
+    []
+  );
+
+  const removeImage = useCallback((index: number) => {
     setImages((prev) => prev.filter((_, i) => i !== index));
     setPreviews((prev) => prev.filter((_, i) => i !== index));
-  };
+  }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!text.trim() && images.length === 0) return alert("Add text or images");
+  const handleSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!text.trim() && images.length === 0)
+        return alert("Add text or images");
 
-    setIsSubmitting(true);
-    try {
-      const formData = new FormData();
-      formData.append("text", text);
-      images.forEach((img) => formData.append("images", img));
+      setIsSubmitting(true);
+      try {
+        const formData = new FormData();
+        formData.append("text", text);
+        images.forEach((img) => formData.append("images", img));
 
-      const res = await fetch("/api/posts", { method: "POST", body: formData });
-      if (res.ok) {
-        setText("");
-        setImages([]);
-        setPreviews([]);
-        fetchPosts();
-      } else {
-        const data = await res.json();
-        alert(data.error || "Failed to post");
+        const res = await fetch("/api/posts", {
+          method: "POST",
+          body: formData,
+        });
+        if (res.ok) {
+          setText("");
+          setImages([]);
+          setPreviews([]);
+          fetchPosts();
+        } else {
+          const data = await res.json();
+          alert(data.error || "Failed to post");
+        }
+      } catch (err) {
+        console.error("Error creating post:", err);
+      } finally {
+        setIsSubmitting(false);
       }
-    } catch (err) {
-      console.error("Error creating post:", err);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+    },
+    [text, images, fetchPosts]
+  );
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = useCallback(async (id: string) => {
     try {
       const res = await fetch(`/api/posts/${id}`, { method: "DELETE" });
       if (res.ok) setPosts((prev) => prev.filter((p) => p._id !== id));
     } catch {
       alert("Failed to delete post");
     }
-  };
+  }, []);
+
+  // ✅ Memoize post list to avoid re-rendering all PostCards unnecessarily
+  const memoizedPosts = useMemo(
+    () =>
+      posts.map((post) => (
+        <PostCard key={post._id} post={post} onDelete={handleDelete} />
+      )),
+    [posts, handleDelete]
+  );
 
   return (
     <div className="relative min-h-screen overflow-x-hidden text-foreground">
@@ -190,7 +210,7 @@ export default function Wall() {
                 type="submit"
                 variant={"outline"}
                 disabled={isSubmitting || (!text.trim() && images.length === 0)}
-                className="gap-2 px-5  text-white"
+                className="gap-2 px-5 text-white"
               >
                 {isSubmitting ? (
                   <Loader className="h-4 w-4 animate-spin" />
@@ -213,9 +233,7 @@ export default function Wall() {
               No posts yet. Be the first to drop something 🔥
             </div>
           ) : (
-            posts.map((post) => (
-              <PostCard key={post._id} post={post} onDelete={handleDelete} />
-            ))
+            memoizedPosts
           )}
         </section>
       </div>
