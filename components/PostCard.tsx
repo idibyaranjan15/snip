@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -67,9 +68,9 @@ export default function PostCard({ post, onDelete }: PostCardProps) {
           Posted {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
         </div>
         <div className="flex items-center gap-2">
-          <div className="text-xs text-muted-foreground px-3 py-1 rounded-full bg-muted/30 backdrop-blur-sm">
+          {/* <div className="text-xs text-muted-foreground px-3 py-1 rounded-full bg-muted/30 backdrop-blur-sm">
             <span className="text-foreground/90 font-medium">{timeLeft}</span>
-          </div>
+          </div> */}
         </div>
       </div>
 
